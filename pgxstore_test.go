@@ -1,4 +1,4 @@
-package pgstore
+package pgxstore
 
 import (
 	"encoding/base64"
