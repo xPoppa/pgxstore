@@ -1,27 +1,40 @@
 package pgstore
 
 import (
+	"context"
 	"database/sql"
 	"encoding/base32"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
-
-	// Include the pq postgres driver.
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgtype/pgxtype"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/pkg/errors"
 )
+
+type Conn interface {
+	pgxtype.Querier
+	Close(ctx context.Context) error
+}
+
+type Pool struct {
+	*pgxpool.Pool
+}
+
+func (p Pool) Close(context.Context) error {
+	p.Pool.Close()
+	return nil
+}
 
 // PGStore represents the currently configured session store.
 type PGStore struct {
 	Codecs  []securecookie.Codec
 	Options *sessions.Options
 	Path    string
-	DbPool  *sql.DB
+	Conn    Conn
 }
 
 // PGSession type
@@ -34,28 +47,28 @@ type PGSession struct {
 	ExpiresOn  time.Time
 }
 
-// NewPGStore creates a new PGStore instance and a new database/sql pool.
+// NewPGStore creates a new PGStore instance and a new pgxpool.Pool.
 // This will also create in the database the schema needed by pgstore.
 func NewPGStore(dbURL string, keyPairs ...[]byte) (*PGStore, error) {
-	db, err := sql.Open("postgres", dbURL)
+	pool, err := pgxpool.Connect(context.Background(), dbURL)
 	if err != nil {
 		// Ignore and return nil.
 		return nil, err
 	}
-	return NewPGStoreFromPool(db, keyPairs...)
+	return NewPGStoreFromConn(Pool{Pool: pool}, keyPairs...)
 }
 
-// NewPGStoreFromPool creates a new PGStore instance from an existing
-// database/sql pool.
+// NewPGStoreFromConn creates a new PGStore instance from an existing
+// database connection.
 // This will also create the database schema needed by pgstore.
-func NewPGStoreFromPool(db *sql.DB, keyPairs ...[]byte) (*PGStore, error) {
+func NewPGStoreFromConn(conn Conn, keyPairs ...[]byte) (*PGStore, error) {
 	dbStore := &PGStore{
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
 			Path:   "/",
 			MaxAge: 86400 * 30,
 		},
-		DbPool: db,
+		Conn: conn,
 	}
 
 	// Create table if it doesn't exist
@@ -69,7 +82,7 @@ func NewPGStoreFromPool(db *sql.DB, keyPairs ...[]byte) (*PGStore, error) {
 
 // Close closes the database connection.
 func (db *PGStore) Close() {
-	db.DbPool.Close()
+	db.Conn.Close(context.Background())
 }
 
 // Get Fetches a session for a given name after it has been added to the
@@ -223,7 +236,7 @@ func (db *PGStore) save(session *sessions.Session) error {
 
 // Delete session
 func (db *PGStore) destroy(session *sessions.Session) error {
-	_, err := db.DbPool.Exec("DELETE FROM http_sessions WHERE key = $1", session.ID)
+	_, err := db.Conn.Exec(context.Background(), "DELETE FROM http_sessions WHERE key = $1", session.ID)
 	return err
 }
 
@@ -232,8 +245,8 @@ func (db *PGStore) createSessionsTable() error {
               BEGIN
               CREATE TABLE IF NOT EXISTS http_sessions (
               id BIGSERIAL PRIMARY KEY,
-              key BYTEA,
-              data BYTEA,
+              key text,
+              data text,
               created_on TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
               modified_on TIMESTAMPTZ,
               expires_on TIMESTAMPTZ);
@@ -245,7 +258,7 @@ func (db *PGStore) createSessionsTable() error {
               END;
               $$;`
 
-	_, err := db.DbPool.Exec(stmt)
+	_, err := db.Conn.Exec(context.Background(), stmt)
 	if err != nil {
 		return errors.Wrapf(err, "Unable to create http_sessions table in the database")
 	}
@@ -255,7 +268,7 @@ func (db *PGStore) createSessionsTable() error {
 
 func (db *PGStore) selectOne(s *PGSession, key string) error {
 	stmt := "SELECT id, key, data, created_on, modified_on, expires_on FROM http_sessions WHERE key = $1"
-	err := db.DbPool.QueryRow(stmt, key).Scan(&s.ID, &s.Key, &s.Data, &s.CreatedOn, &s.ModifiedOn, &s.ExpiresOn)
+	err := db.Conn.QueryRow(context.Background(), stmt, key).Scan(&s.ID, &s.Key, &s.Data, &s.CreatedOn, &s.ModifiedOn, &s.ExpiresOn)
 	if err != nil {
 		return errors.Wrapf(err, "Unable to find session in the database")
 	}
@@ -266,14 +279,14 @@ func (db *PGStore) selectOne(s *PGSession, key string) error {
 func (db *PGStore) insert(s *PGSession) error {
 	stmt := `INSERT INTO http_sessions (key, data, created_on, modified_on, expires_on)
            VALUES ($1, $2, $3, $4, $5)`
-	_, err := db.DbPool.Exec(stmt, s.Key, s.Data, s.CreatedOn, s.ModifiedOn, s.ExpiresOn)
+	_, err := db.Conn.Exec(context.Background(), stmt, s.Key, s.Data, s.CreatedOn, s.ModifiedOn, s.ExpiresOn)
 
 	return err
 }
 
 func (db *PGStore) update(s *PGSession) error {
 	stmt := `UPDATE http_sessions SET data=$1, modified_on=$2, expires_on=$3 WHERE key=$4`
-	_, err := db.DbPool.Exec(stmt, s.Data, s.ModifiedOn, s.ExpiresOn, s.Key)
+	_, err := db.Conn.Exec(context.Background(), stmt, s.Data, s.ModifiedOn, s.ExpiresOn, s.Key)
 
 	return err
 }

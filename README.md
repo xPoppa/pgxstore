@@ -1,14 +1,23 @@
-# pgstore
+# pgxstore
 
 A session store backend for [gorilla/sessions](http://www.gorillatoolkit.org/pkg/sessions) - [src](https://github.com/gorilla/sessions).
 
+Forked from [antonlindstrom/pgstore](https://github.com/antonlindstrom/pgstore) and modified to use [jackc/pgx](https://github.com/jackc/pgx) instead of database/sql.
+
+From the [pgx docs](https://github.com/jackc/pgx#choosing-between-the-pgx-and-databasesql-interfaces):
+
+> It is recommended to use the pgx interface if:
+>
+> 1. The application only targets PostgreSQL.
+> 2. No other libraries that require database/sql are in use.
+
 ## Installation
 
-    make get-deps
+    go get github.com/yi-jiayu/pgxstore
 
 ## Documentation
 
-Available on [godoc.org](http://www.godoc.org/github.com/antonlindstrom/pgstore).
+Available on [godoc.org](http://www.godoc.org/github.com/yi-jiayu/pgxstore).
 
 See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underlying interface.
 
@@ -59,21 +68,3 @@ func ExampleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 ```
-
-## Breaking changes
-
-* 2016-07-19 - `NewPGStore` and `NewPGStoreFromPool` now returns `(*PGStore, error)`
-
-## Thanks
-
-I've stolen, borrowed and gotten inspiration from the other backends available:
-
-* [redistore](https://github.com/boj/redistore)
-* [mysqlstore](https://github.com/srinathgs/mysqlstore)
-* [babou dbstore](https://github.com/drbawb/babou/blob/master/lib/session/dbstore.go)
-
-Thank you all for sharing your code!
-
-What makes this backend different is that it's for PostgreSQL.
-
-We've recently refactored this backend to use the standard database/sql driver instead of Gorp. This removes a dependency and makes this package very lightweight and makes database interactions very transparent. Lastly, from the standpoint of unit testing where you want to mock the database layer instead of requiring a real database, you can now easily use a package like [go-SQLMock](https://github.com/DATA-DOG/go-sqlmock) to do just that.
