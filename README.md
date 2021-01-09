@@ -23,7 +23,6 @@ See http://www.gorillatoolkit.org/pkg/sessions for full documentation on underly
 
 ### Example
 
-[embedmd]:# (examples/sessions.go)
 ```go
 package examples
 
@@ -32,7 +31,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/antonlindstrom/pgstore"
+	"github.com/yi-jiayu/pgxstore"
 )
 
 // ExampleHandler is an example that displays the usage of PGStore.
