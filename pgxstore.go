@@ -2,7 +2,6 @@ package pgxstore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base32"
 	"net/http"
 	"strings"
@@ -103,7 +102,7 @@ func (db *PGStore) New(r *http.Request, name string) (*sessions.Session, error) 
 			err = db.load(session)
 			if err == nil {
 				session.IsNew = false
-			} else if errors.Cause(err) == sql.ErrNoRows {
+			} else if errors.Cause(err) == pgx.ErrNoRows {
 				err = nil
 			}
 		}
