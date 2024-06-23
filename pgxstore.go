@@ -9,9 +9,8 @@ import (
 
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
-	"github.com/jackc/pgtype/pgxtype"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 )
 
@@ -20,7 +19,7 @@ type PGStore struct {
 	Codecs  []securecookie.Codec
 	Options *sessions.Options
 	Path    string
-	Conn    pgxtype.Querier
+	Conn    *pgxpool.Pool
 }
 
 // PGSession type
@@ -36,7 +35,7 @@ type PGSession struct {
 // NewPGStore creates a new PGStore instance and a new pgxpool.Pool.
 // This will also create in the database the schema needed by pgstore.
 func NewPGStore(dbURL string, keyPairs ...[]byte) (*PGStore, error) {
-	pool, err := pgxpool.Connect(context.Background(), dbURL)
+	pool, err := pgxpool.New(context.Background(), dbURL)
 	if err != nil {
 		// Ignore and return nil.
 		return nil, err
@@ -47,7 +46,7 @@ func NewPGStore(dbURL string, keyPairs ...[]byte) (*PGStore, error) {
 // NewPGStoreFromConn creates a new PGStore instance from an existing
 // database connection.
 // This will also create the database schema needed by pgstore.
-func NewPGStoreFromConn(conn pgxtype.Querier, keyPairs ...[]byte) (*PGStore, error) {
+func NewPGStoreFromConn(conn *pgxpool.Pool, keyPairs ...[]byte) (*PGStore, error) {
 	dbStore := &PGStore{
 		Codecs: securecookie.CodecsFromPairs(keyPairs...),
 		Options: &sessions.Options{
@@ -70,12 +69,7 @@ func NewPGStoreFromConn(conn pgxtype.Querier, keyPairs ...[]byte) (*PGStore, err
 // *pgx.Conn or *pgxpool.Pool. It is not necessary to call Close if the store
 // was created with an existing connection that will be closed separately.
 func (db *PGStore) Close() {
-	switch v := db.Conn.(type) {
-	case *pgx.Conn:
-		_ = v.Close(context.Background())
-	case *pgxpool.Pool:
-		v.Close()
-	}
+	db.Conn.Close()
 }
 
 // Get Fetches a session for a given name after it has been added to the
